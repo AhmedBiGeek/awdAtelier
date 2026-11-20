@@ -31,3 +31,11 @@ npm-debug.log*
 *.mp4
 backend.zip
 *.zip
+
+# Excluded from rendu push
+README.md
+documentation/screenshots/
+*.mp4
+backend.zip
+*.zip
+**/README.md
