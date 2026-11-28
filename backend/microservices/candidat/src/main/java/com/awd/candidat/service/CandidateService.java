@@ -1,17 +1,22 @@
 package com.awd.candidat.service;
 
+import com.awd.candidat.client.JobClient;
 import com.awd.candidat.dto.CandidateRequest;
 import com.awd.candidat.dto.CandidateResponse;
+import com.awd.candidat.dto.JobDTO;
 import com.awd.candidat.entity.Address;
 import com.awd.candidat.entity.Candidate;
 import com.awd.candidat.exception.ConflictException;
 import com.awd.candidat.exception.ResourceNotFoundException;
 import com.awd.candidat.mapper.CandidatMapper;
 import com.awd.candidat.repository.CandidateRepository;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional
@@ -19,10 +24,14 @@ public class CandidateService {
 
     private final CandidateRepository candidateRepository;
     private final AddressService addressService;
+    private final JobClient jobServiceClient;
 
-    public CandidateService(CandidateRepository candidateRepository, AddressService addressService) {
+    public CandidateService(CandidateRepository candidateRepository,
+                            AddressService addressService,
+                            JobClient jobServiceClient) {
         this.candidateRepository = candidateRepository;
         this.addressService = addressService;
+        this.jobServiceClient = jobServiceClient;
     }
 
     @Transactional(readOnly = true)
@@ -63,11 +72,9 @@ public class CandidateService {
     }
 
     public void delete(Long id) {
-        // cascade also deletes the candidate's address
         candidateRepository.delete(getCandidate(id));
     }
 
-    /** Links an existing address to a candidate (replacing any current link). */
     public CandidateResponse assignAddress(Long candidateId, Long addressId) {
         Candidate candidate = getCandidate(candidateId);
         Address address = addressService.getAddress(addressId);
@@ -80,11 +87,37 @@ public class CandidateService {
         return CandidatMapper.toResponse(candidateRepository.saveAndFlush(candidate));
     }
 
-    /** Unlinks the candidate's address. The address itself is kept. */
     public CandidateResponse removeAddress(Long candidateId) {
         Candidate candidate = getCandidate(candidateId);
         candidate.setAddress(null);
         return CandidatMapper.toResponse(candidateRepository.saveAndFlush(candidate));
+    }
+
+    public List<JobDTO> getJobs() {
+        return jobServiceClient.findAll();
+    }
+
+    public JobDTO getJobById(Long id) {
+        return jobServiceClient.findById(id);
+    }
+
+    @Transactional(readOnly = true)
+    public List<JobDTO> getFavoriteJobs(Long candidateId) {
+        Candidate candidate = candidateRepository.findById(candidateId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Candidate not found"));
+        return candidate.getFavoriteJobs().stream()
+                .map(jobServiceClient::findById)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public void saveFavoriteJob(Long candidateId, Long jobId) {
+        Candidate candidate = candidateRepository.findById(candidateId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Candidate not found"));
+        candidate.getFavoriteJobs().add(jobId);
+        candidateRepository.save(candidate);
     }
 
     private Candidate getCandidate(Long id) {
